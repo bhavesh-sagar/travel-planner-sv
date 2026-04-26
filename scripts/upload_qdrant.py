@@ -103,7 +103,7 @@ for file in os.listdir(DATA_FOLDER):
         for c in chunks:
             all_chunks.append({"text": c, "source": file})
 
-        print(f"   ➜ {len(chunks)} chunks")
+        print(f" {len(chunks)} chunks")
 
     except Exception as e:
         print(f" Error: {e}")
