@@ -1,26 +1,67 @@
-from fastapi import APIRouter, BackgroundTasks
-from app.models.schema import Query
+from fastapi import APIRouter
 from app.services.rag_service import hybrid_search
-from app.services.response_service import generate_response
-from app.services.cache_service import get_cache, set_cache
+from app.services.cache_service import get_cache, set_cache, make_cache_key
+from app.services.safety_service import check_query_safety
+from app.services.response_service import humanize_response
 
 router = APIRouter()
 
 @router.post("/api/ultimate-agent")
-async def ultimate(q: Query, background_tasks: BackgroundTasks):
+def agent(req: dict):
+    try:
+        query = req.get("destination", "")
+        if not query:
+            return {"error": "No query provided"}
 
-    cache_key = f"{q.user}:{q.destination.lower()}"
+        status, reason = check_query_safety(query)
+        try:
+            if not status:
+                if reason == "unsafe":
+                    return {
+                        "cached": False,
+                        "data": {},
+                        "text": "This request appears to involve illegal or harmful activities, which are not allowed. Please avoid asking such queries."
+                    }
 
-    cached = get_cache(cache_key)
-    if cached:
-        return {"cached": True, "data": cached}
+                if reason == "non_travel":
+                    return {
+                        "cached": False,
+                        "data": {},
+                        "text": "Sorry, I can only assist with safe travel-related queries."
+                    }
+        except Exception as e:
+            return {
+                "cached": False,
+                "data": {},
+                "text": "Unable to process your request."
+            }
 
-    docs = hybrid_search(q.destination)
-    result = generate_response(q.destination, docs)
+        cache_key = make_cache_key(query)
+        cached_data = get_cache(cache_key)
+        if cached_data:
+            return {
+                "cached": True,
+                "data": cached_data["data"],
+                "text": cached_data["text"]
+            }
 
-    background_tasks.add_task(set_cache, cache_key, result)
+        result = hybrid_search(query)
+        human_text = humanize_response(result)
+        response = {
+            "data": result,
+            "text": human_text
+        }
+        set_cache(cache_key, response, ttl=3600)
 
-    return {
-        "data": result,
-        "rag_docs": docs
-    }
+        return {
+            "cached": False,
+            "data": result,
+            "text": human_text
+        }
+    except Exception as e:
+        print("Error:", str(e))
+        return {
+            "cached": False,
+            "data": {},
+            "text": "An error occurred while processing your request."
+        }

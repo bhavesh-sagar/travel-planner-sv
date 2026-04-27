@@ -1,19 +1,37 @@
-# from app.dependencies import qdrant, embed_model
-from app.dependencies import qdrant
+from app.services.response_service import generate_structured_response
 from app.services.ner_service import extract_location
+from app.dependencies import qdrant
 
-def hybrid_search(query):
+def hybrid_search(query: str):
     try:
         location = extract_location(query)
-        # vector = embed_model.encode(query).tolist()
+        points, _ = qdrant.scroll(collection_name="travel_data", limit=10)
+        keywords = query.lower().split()
+        filtered = [
+            p for p in points
+            if any(k in p.payload.get("text", "").lower() for k in keywords)
+        ]
 
-        results = qdrant.query_points(
-            collection_name="travel_data",
-            # query=vector,
-            limit=5
-        )
+        if not filtered:
+            print("No match found, using fallback data")
+            filtered = points[:5]
 
-        return [r.payload["text"] for r in results.points]
+        context = "\n".join([
+            p.payload.get("text", "")
+            for p in filtered[:5]
+        ])
+
+        if not context.strip():
+            context = f"Travel information about {query}"
+
+        return generate_structured_response(query, context)
+
     except Exception as e:
-        print(" Qdrant failed:", str(e))
-        return []
+        print("Qdrant failed:", str(e))
+        return {
+            "summary": "Search failed",
+            "places": [],
+            "transport": {},
+            "budget": "",
+            "tips": "Try again"
+        }
