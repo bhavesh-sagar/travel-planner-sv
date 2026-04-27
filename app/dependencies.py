@@ -3,7 +3,8 @@ from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 import os
 
-redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+# redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+redis_client = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 
 qdrant = QdrantClient(
     url=os.getenv("QDRANT_URL"),
